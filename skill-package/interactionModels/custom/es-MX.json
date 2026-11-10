@@ -53,6 +53,39 @@
           ]
         },
         {
+          "name": "CorreoIntent",
+          "slots": [
+            { "name": "filtro", "type": "FILTRO_CORREO" },
+            { "name": "cuenta", "type": "CUENTA_CORREO" }
+          ],
+          "samples": [
+            "qué correos tengo",
+            "qué correos tengo {filtro}",
+            "qué correos tengo en {cuenta}",
+            "resume mi correo",
+            "resume mi correo {cuenta}",
+            "resume mi correo de {cuenta}",
+            "resume mis correos {filtro}",
+            "resume mis correos {filtro} de {cuenta}",
+            "lee mis correos",
+            "lee mis correos {filtro}",
+            "lee mi correo de {cuenta}",
+            "tengo correos {filtro}",
+            "tengo correo nuevo",
+            "qué hay en mi correo",
+            "qué hay en mi correo de {cuenta}",
+            "revisa mi correo",
+            "revisa mi correo de {cuenta}",
+            "revisa mis correos {filtro}",
+            "qué correos me llegaron {filtro}",
+            "qué me llegó al correo",
+            "qué me llegó al correo de {cuenta}",
+            "correos {filtro}",
+            "mi correo {cuenta}",
+            "mi correo de {cuenta}"
+          ]
+        },
+        {
           "name": "PreguntaIntent",
           "slots": [{ "name": "frase", "type": "FRASE" }],
           "samples": [
@@ -77,6 +110,27 @@
         }
       ],
       "types": [
+        {
+          "name": "FILTRO_CORREO",
+          "values": [
+            { "name": { "value": "no leídos", "synonyms": ["sin leer", "nuevos", "pendientes", "que no he leído"] } },
+            { "name": { "value": "de hoy", "synonyms": ["hoy", "del día", "de esta mañana"] } },
+            { "name": { "value": "de ayer", "synonyms": ["ayer", "desde ayer"] } },
+            { "name": { "value": "de la semana", "synonyms": ["de esta semana", "de los últimos días", "recientes"] } },
+            { "name": { "value": "importantes", "synonyms": ["urgentes"] } }
+          ]
+        },
+        {
+          "name": "CUENTA_CORREO",
+          "values": [
+            { "name": { "value": "personal" } },
+            { "name": { "value": "trabajo", "synonyms": ["la oficina", "la chamba"] } },
+            { "name": { "value": "escuela", "synonyms": ["la universidad", "la uni", "la escuela"] } },
+            { "name": { "value": "negocio", "synonyms": ["la empresa", "la tienda", "el negocio"] } },
+            { "name": { "value": "principal" } },
+            { "name": { "value": "secundaria", "synonyms": ["la otra"] } }
+          ]
+        },
         {
           "name": "FRASE",
           "values": [

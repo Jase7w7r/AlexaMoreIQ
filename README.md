@@ -25,6 +25,7 @@ Se dice **«Alexa, abre mi asistente»** y luego se conversa sin repetir el nomb
 | `herramientas/smapi.py` | Crear la skill alojada, subir modelo y manifiesto, simular, sin pasar por la consola |
 | `herramientas/credenciales_git.py` | Credenciales temporales para el repositorio git de Amazon |
 | `pruebas/simular.py` | Corre la skill en local con peticiones como las de Alexa |
+| `pruebas/correo_falso.py` | Prueba el resumen de correo con un servidor IMAP simulado |
 
 ## Cómo decide qué hacer
 
@@ -60,6 +61,35 @@ o `BRAVE_API_KEY`. Basta una.
 Memoria: el nombre y las notas («recuerda que…») se guardan por `personId` cuando Alexa
 reconoce la voz; si no hay perfil de voz, por cuenta. Dentro de una sesión viajan los últimos
 seis turnos para poder preguntar «¿y en qué año?».
+
+## Resumen de correo (Gmail)
+
+«Alexa, pregúntale a mi asistente qué correos tengo», «resume mis correos no leídos», «revisa mi
+correo del trabajo». La skill entra a Gmail por IMAP, en solo lectura (no marca nada como leído),
+toma los mensajes del último día (o los no leídos de la semana, o los de hoy, según se pida),
+máximo 15 por cuenta, y el modelo los resume en cuatro o cinco frases: quién escribe, citas,
+pagos, facturas; la publicidad y los boletines van agrupados en una frase.
+
+- Cada cuenta pertenece a una **persona** (el nombre con el que se presentó con «me llamo…») y
+  solo se lee cuando Alexa **reconoce su voz**. Sin perfil de voz, la skill no lee correo.
+- Se configura en `secretos.json` con **contraseñas de aplicación** de Google (Cuenta de Google ›
+  Seguridad › Verificación en dos pasos › Contraseñas de aplicaciones), una por cuenta:
+  ```json
+  "CORREOS": {
+    "Ana": [
+      { "usuario": "ana@gmail.com", "clave_app": "xxxx xxxx xxxx xxxx", "etiqueta": "personal" },
+      { "usuario": "ana.trabajo@gmail.com", "clave_app": "xxxx xxxx xxxx xxxx", "etiqueta": "trabajo" }
+    ]
+  }
+  ```
+  La `etiqueta` es la que se dice en voz: personal, trabajo, escuela, negocio, principal, secundaria.
+- Los fragmentos de los correos se mandan al modelo para resumirlos. Si no quieres que salgan,
+  pon `"CORREOS_SIN_MODELO": true`: entonces solo dice cuántos hay y lista remitentes y asuntos.
+- Las cuentas se leen en paralelo para caber en los 8 segundos; una que falle (contraseña mala,
+  IMAP apagado) se avisa y no bloquea a las demás. IMAP debe estar activo en Gmail
+  (Configuración › Reenvío y correo POP/IMAP).
+
+Prueba sin Gmail ni modelo: `pruebas/correo_falso.py` simula el servidor IMAP.
 
 ## Requisitos (una sola vez)
 

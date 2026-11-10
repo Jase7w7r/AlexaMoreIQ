@@ -5,14 +5,20 @@ cuando hace falta y memoria por persona (perfiles de voz de Alexa).
 Corre en una skill alojada por Amazon (Python 3.8). También se puede invocar en local
 con pruebas/simular.py, que usa una memoria en archivo en vez de S3.
 """
+import concurrent.futures
 import datetime
+import email
 import html
+import imaplib
 import json
 import logging
 import os
 import re
+import socket
 import time
 import urllib.parse
+from email.header import decode_header, make_header
+from email.utils import parseaddr, parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -72,6 +78,11 @@ TAVILY_API_KEY = SECRETOS.get("TAVILY_API_KEY", "")
 SERPER_API_KEY = SECRETOS.get("SERPER_API_KEY", "")
 GOOGLE_API_KEY = SECRETOS.get("GOOGLE_API_KEY", "")
 GOOGLE_CX = SECRETOS.get("GOOGLE_CX", "")
+# Cuentas de Gmail por persona (nombre con el que se presentó a la skill):
+#   "CORREOS": {"Ana": [{"usuario": "ana@gmail.com", "clave_app": "xxxx xxxx xxxx xxxx", "etiqueta": "personal"}]}
+# La clave es una «contraseña de aplicación» de Google (requiere verificación en dos pasos).
+CORREOS = SECRETOS.get("CORREOS") or {}  # type: Dict[str, List[Dict[str, str]]]
+CORREOS_SIN_MODELO = bool(SECRETOS.get("CORREOS_SIN_MODELO"))   # True: solo lista remitentes y asuntos, sin mandar nada al modelo
 # Dónde está la casa, para que el modelo responda con ese contexto. Va en secretos.json
 # (clave "LUGAR") para no dejar datos personales en el código.
 LUGAR = SECRETOS.get("LUGAR") or LUGAR
@@ -470,6 +481,179 @@ def clima(lugar: str, reloj: Reloj) -> str:
     return "\n".join(lineas)
 
 
+# ---------------------------------------------------------------- correo (Gmail por IMAP)
+
+MESES_IMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MAX_CORREOS_POR_CUENTA = 15
+MAX_FRAGMENTO = 300
+
+
+def _decodificar_cabecera(valor: Optional[str]) -> str:
+    try:
+        return str(make_header(decode_header(valor or ""))).strip()
+    except Exception:
+        return (valor or "").strip()
+
+
+def _fragmento_texto(mensaje: "email.message.Message") -> str:
+    """Primeras líneas del cuerpo: texto plano si lo hay, si no el HTML sin etiquetas."""
+    plano, html_ = "", ""
+    partes = mensaje.walk() if mensaje.is_multipart() else [mensaje]
+    for parte in partes:
+        tipo = parte.get_content_type()
+        if tipo not in ("text/plain", "text/html") or parte.get("Content-Disposition", "").startswith("attachment"):
+            continue
+        try:
+            carga = parte.get_payload(decode=True) or b""
+            texto = carga.decode(parte.get_content_charset() or "utf-8", "ignore")
+        except Exception:
+            continue
+        if tipo == "text/plain" and not plano:
+            plano = texto
+        elif tipo == "text/html" and not html_:
+            html_ = texto
+    if plano:
+        texto = plano
+    else:
+        texto = re.sub(r"<(style|script).*?</\1>", " ", html_, flags=re.S | re.I)
+        texto = html.unescape(re.sub(r"<[^>]+>", " ", texto))      # etiquetas → espacio, para no pegar palabras
+    texto = re.sub(r"^>.*$", "", texto, flags=re.M)               # citas de respuestas
+    texto = re.sub(r"https?://\S+", "", texto)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto[:MAX_FRAGMENTO]
+
+
+def leer_cuenta(cuenta: Dict[str, str], desde: datetime.date, solo_no_leidos: bool, tiempo: float) -> List[Dict[str, Any]]:
+    """Mensajes recientes de una cuenta de Gmail (solo lectura; no marca nada como leído)."""
+    socket.setdefaulttimeout(tiempo)
+    etiqueta = cuenta.get("etiqueta") or cuenta.get("usuario", "")
+    m = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+    try:
+        m.login(cuenta["usuario"], cuenta["clave_app"].replace(" ", ""))
+        m.select("INBOX", readonly=True)
+        criterio = "(SINCE %02d-%s-%d%s)" % (desde.day, MESES_IMAP[desde.month - 1], desde.year, " UNSEEN" if solo_no_leidos else "")
+        _, datos = m.search(None, criterio)
+        ids = datos[0].split()
+        total = len(ids)
+        ids = ids[-MAX_CORREOS_POR_CUENTA:]
+        mensajes = []  # type: List[Dict[str, Any]]
+        if ids:
+            _, respuesta = m.fetch(b",".join(ids), "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT]<0.2000>)")
+            actual = None  # type: Optional[Dict[str, Any]]
+            cabecera_cruda = b""
+            for item in respuesta:
+                if not isinstance(item, tuple):
+                    continue
+                meta, contenido = item[0], item[1]
+                if b"HEADER" in meta:
+                    cabecera_cruda = contenido
+                    cab = email.message_from_bytes(contenido)
+                    nombre, direccion = parseaddr(_decodificar_cabecera(cab.get("From")))
+                    try:
+                        fecha = parsedate_to_datetime(cab.get("Date"))
+                    except Exception:
+                        fecha = None
+                    actual = {"cuenta": etiqueta, "de": nombre or direccion, "direccion": direccion,
+                              "asunto": _decodificar_cabecera(cab.get("Subject")) or "(sin asunto)",
+                              "fecha": fecha.strftime("%d/%m %H:%M") if fecha else "",
+                              "orden": fecha.isoformat() if fecha else "",
+                              "leido": b"\\Seen" in meta, "fragmento": ""}
+                    mensajes.append(actual)
+                elif b"TEXT" in meta and actual is not None:
+                    # Cabeceras reales + cuerpo truncado: el analizador respeta las partes MIME.
+                    try:
+                        actual["fragmento"] = _fragmento_texto(email.message_from_bytes(cabecera_cruda.rstrip(b"\r\n") + b"\r\n\r\n" + contenido))
+                    except Exception:
+                        pass
+        for x in mensajes:
+            x["total_cuenta"] = total
+        return mensajes
+    finally:
+        try:
+            m.logout()
+        except Exception:
+            pass
+
+
+def leer_correos(cuentas: List[Dict[str, str]], desde: datetime.date, solo_no_leidos: bool, reloj: Reloj) -> List[Dict[str, Any]]:
+    """Lee varias cuentas a la vez para caber en el tiempo de Alexa. Una cuenta que falle se omite."""
+    tiempo = reloj.tiempo_para(4.0)
+    resultados = []  # type: List[Dict[str, Any]]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(cuentas))) as pool:
+        tareas = {pool.submit(leer_cuenta, c, desde, solo_no_leidos, tiempo): c for c in cuentas}
+        try:
+            for tarea in concurrent.futures.as_completed(tareas, timeout=tiempo + 0.5):
+                try:
+                    resultados.extend(tarea.result())
+                except Exception as e:
+                    logger.warning("Correo de %s falló: %s", tareas[tarea].get("usuario"), e)
+                    resultados.append({"cuenta": tareas[tarea].get("etiqueta") or tareas[tarea].get("usuario"), "error": str(e)[:80]})
+        except concurrent.futures.TimeoutError:
+            logger.warning("Alguna cuenta no respondió a tiempo; sigo con lo que hay")
+            for tarea, c in tareas.items():
+                if not tarea.done():
+                    resultados.append({"cuenta": c.get("etiqueta") or c.get("usuario"), "error": "tiempo agotado"})
+    return resultados
+
+
+def resumir_correos(mensajes: List[Dict[str, Any]], filtro: str, sistema: str, reloj: Reloj) -> str:
+    errores = [x for x in mensajes if x.get("error")]
+    mensajes = [x for x in mensajes if not x.get("error")]
+    aviso = ""
+    if errores:
+        aviso = " No pude entrar a la cuenta %s; revisa su contraseña de aplicación." % ", ".join(e["cuenta"] for e in errores)
+    if not mensajes:
+        return "No tienes correos %s.%s" % (filtro or "recientes", aviso)
+    mensajes.sort(key=lambda x: x.get("orden", ""), reverse=True)
+    por_cuenta = {}  # type: Dict[str, int]
+    for x in mensajes:
+        por_cuenta[x["cuenta"]] = x.get("total_cuenta", 0)
+    conteo = ", ".join("%d en %s" % (n, c) for c, n in por_cuenta.items())
+    if CORREOS_SIN_MODELO:
+        lineas = ["%s sobre %s" % (x["de"], x["asunto"]) for x in mensajes[:6]]
+        return "Tienes %s. Los más recientes: %s.%s" % (conteo, "; ".join(lineas), aviso)
+    detalle = "\n".join("- [%s] %s | de %s | %s%s | %s" % (
+        x["cuenta"], x["fecha"], x["de"], x["asunto"], "" if x["leido"] else " | NO LEÍDO", x["fragmento"] or "(sin texto)") for x in mensajes)
+    instruccion = (" Vas a resumir el correo de quien te habla para que lo escuche por la bocina. Di cuántos hay (%s) "
+                   "y luego lo que importa: personas que le escriben, citas, pagos, entregas, facturas o avisos de la "
+                   "escuela o el trabajo. Agrupa en una frase lo que sea publicidad, boletines o notificaciones "
+                   "automáticas sin detallarlo. Nada de listas ni markdown; cuatro o cinco frases como máximo. "
+                   "No inventes nada que no esté en los correos." % conteo)
+    mensajes_modelo = [{"role": "system", "content": sistema + instruccion},
+                       {"role": "user", "content": "Correos %s:\n%s" % (filtro or "recientes", detalle)}]
+    msj = _llamar_con_respaldo(mensajes_modelo, reloj, 3.5, max_tokens=400)
+    return (msj.get("content") or "").strip() + aviso
+
+
+def _interpretar_filtro(filtro: str):
+    """Devuelve (fecha desde, solo no leídos, descripción)."""
+    f = (filtro or "").lower()
+    hoy = datetime.date.today()
+    if any(p in f for p in ("no le", "sin leer", "nuevo", "pendiente")):
+        return hoy - datetime.timedelta(days=7), True, "sin leer"
+    if "hoy" in f:
+        return hoy, False, "de hoy"
+    if "ayer" in f:
+        return hoy - datetime.timedelta(days=1), False, "desde ayer"
+    if "semana" in f or "días" in f or "dias" in f:
+        return hoy - datetime.timedelta(days=7), False, "de la semana"
+    return hoy - datetime.timedelta(days=1), False, "del último día"
+
+
+def _cuentas_de(persona: Dict[str, Any], etiqueta: str) -> List[Dict[str, str]]:
+    nombre = (persona.get("nombre") or "").strip().lower()
+    cuentas = []  # type: List[Dict[str, str]]
+    for clave, lista in CORREOS.items():
+        if clave.strip().lower() == nombre:
+            cuentas = list(lista)
+    if etiqueta:
+        e = etiqueta.lower()
+        filtradas = [c for c in cuentas if e in (c.get("etiqueta") or "").lower() or e in (c.get("usuario") or "").lower()]
+        if filtradas:
+            cuentas = filtradas
+    return cuentas
+
+
 # ---------------------------------------------------------------- voz y pantalla
 
 def limpiar_para_voz(texto: str, maximo: int = MAX_VOZ) -> str:
@@ -650,6 +834,47 @@ class PreguntaHandler(AbstractRequestHandler):
         return _hablar(handler_input, respuesta, titulo=pregunta[:60], pie=pie)
 
 
+class CorreoHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("CorreoIntent")(handler_input)
+
+    def handle(self, handler_input):
+        persona = _persona(handler_input)
+        if not CORREOS:
+            return _hablar(handler_input, "Todavía no tengo cuentas de correo configuradas. Se añaden en el archivo secretos punto jason.")
+        if _clave_persona(handler_input).startswith("cuenta/"):
+            return _hablar(handler_input, "Para leer correos necesito reconocer tu voz. Crea tu perfil de voz en la app de Alexa y activa la personalización de skills.")
+        if not persona.get("nombre"):
+            return _hablar(handler_input, "Primero dime cómo te llamas, para saber qué correo es el tuyo.")
+        etiqueta = (get_slot_value(handler_input, "cuenta") or "").strip()
+        cuentas = _cuentas_de(persona, etiqueta)
+        if not cuentas:
+            return _hablar(handler_input, "No tengo cuentas de correo configuradas para %s." % persona["nombre"])
+        desde, solo_no_leidos, descripcion = _interpretar_filtro(get_slot_value(handler_input, "filtro") or "")
+        if not NVIDIA_API_KEY and not CORREOS_SIN_MODELO:
+            return _hablar(handler_input, "Me falta la llave del modelo para resumir el correo.", seguir=False)
+
+        reloj = Reloj()
+        _avisar_progreso(handler_input, "Déjame revisar tu correo.")
+        try:
+            mensajes = leer_correos(cuentas, desde, solo_no_leidos, reloj)
+            respuesta = resumir_correos(mensajes, descripcion, _prompt_sistema(persona), reloj)
+            lineas = ["%s: %s" % (x["de"], x["asunto"]) for x in mensajes if not x.get("error")][:6]
+            pie = "%d correos %s" % (len([x for x in mensajes if not x.get("error")]), descripcion)
+        except SinTiempo:
+            respuesta = "El correo tardó demasiado en responder. Pregúntame otra vez."
+            lineas, pie = [], ""
+        except Exception as e:
+            logger.exception("Fallo leyendo correo: %s", e)
+            respuesta = "No pude leer el correo ahora. Inténtalo de nuevo en un momento."
+            lineas, pie = [], ""
+        _anotar_turno(handler_input, "resume mi correo " + descripcion, respuesta)
+        voz = limpiar_para_voz(respuesta)
+        _apl(handler_input, "Correo " + descripcion, "\n".join(lineas) if lineas else voz, pie)
+        rb = handler_input.response_builder.speak(escapar_ssml(voz)).ask("¿Algo más?")
+        return rb.response
+
+
 class NombreHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("NombreIntent")(handler_input)
@@ -728,8 +953,8 @@ class AyudaHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         texto = ("Pregúntame lo que quieras y, si hace falta, busco en internet. Puedes decir «recuerda que» "
-                 "y algo para que lo guarde, «qué sabes de mí» para oír tus notas, o «me llamo» y tu nombre. "
-                 "¿Qué quieres saber?")
+                 "y algo para que lo guarde, «qué sabes de mí» para oír tus notas, «me llamo» y tu nombre, "
+                 "o «resume mi correo» si tienes cuentas configuradas. ¿Qué quieres saber?")
         return _hablar(handler_input, texto, titulo="Ayuda")
 
 
@@ -820,7 +1045,7 @@ def _adaptador_memoria():
 
 
 sb = CustomSkillBuilder(persistence_adapter=_adaptador_memoria(), api_client=DefaultApiClient())
-for h in (LanzarHandler(), PreguntaHandler(), NombreHandler(), RecordarHandler(), QuienSoyHandler(),
+for h in (LanzarHandler(), CorreoHandler(), PreguntaHandler(), NombreHandler(), RecordarHandler(), QuienSoyHandler(),
           OlvidarHandler(), AyudaHandler(), SalirHandler(), FallbackHandler(), SesionTerminadaHandler()):
     sb.add_request_handler(h)
 sb.add_exception_handler(ErrorHandler())
