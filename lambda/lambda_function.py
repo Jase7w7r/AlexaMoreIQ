@@ -58,7 +58,8 @@ def _leer_secretos() -> Dict[str, str]:
                 datos.update(json.load(f))
         except Exception as e:  # pragma: no cover
             logger.error("No pude leer secretos.json: %s", e)
-    for clave in ("NVIDIA_API_KEY", "BRAVE_API_KEY", "LUGAR"):
+    for clave in ("NVIDIA_API_KEY", "BRAVE_API_KEY", "TAVILY_API_KEY", "SERPER_API_KEY",
+                  "GOOGLE_API_KEY", "GOOGLE_CX", "LUGAR"):
         if os.environ.get(clave):
             datos[clave] = os.environ[clave]
     return datos
@@ -67,6 +68,10 @@ def _leer_secretos() -> Dict[str, str]:
 SECRETOS = _leer_secretos()
 NVIDIA_API_KEY = SECRETOS.get("NVIDIA_API_KEY", "")
 BRAVE_API_KEY = SECRETOS.get("BRAVE_API_KEY", "")
+TAVILY_API_KEY = SECRETOS.get("TAVILY_API_KEY", "")
+SERPER_API_KEY = SECRETOS.get("SERPER_API_KEY", "")
+GOOGLE_API_KEY = SECRETOS.get("GOOGLE_API_KEY", "")
+GOOGLE_CX = SECRETOS.get("GOOGLE_CX", "")
 # Dónde está la casa, para que el modelo responda con ese contexto. Va en secretos.json
 # (clave "LUGAR") para no dejar datos personales en el código.
 LUGAR = SECRETOS.get("LUGAR") or LUGAR
@@ -117,8 +122,14 @@ HERRAMIENTA_DECIDIR = [{
                     "type": "string",
                     "description": "Si no se busca: la respuesta final hablada, en una a tres frases. Vacío si se busca.",
                 },
+                "lugar_clima": {
+                    "type": "string",
+                    "description": ("Solo si la pregunta es sobre el clima o el pronóstico (lluvia, temperatura, frío, "
+                                    "calor, paraguas): la ciudad de la que se pregunta, o la palabra AQUI si no "
+                                    "menciona ninguna. Vacío si no es de clima."),
+                },
             },
-            "required": ["necesita_busqueda", "consulta", "respuesta"],
+            "required": ["necesita_busqueda", "consulta", "respuesta", "lugar_clima"],
         },
     },
 }]
@@ -197,11 +208,12 @@ def decidir(pregunta: str, sistema: str, historial: List[Dict[str, str]], reloj:
                 "buscar": bool(d.get("necesita_busqueda")),
                 "consulta": (d.get("consulta") or "").strip(),
                 "respuesta": (d.get("respuesta") or "").strip(),
+                "lugar_clima": (d.get("lugar_clima") or "").strip(),
             }
         except Exception as e:
             logger.warning("Argumentos de decidir inválidos: %s", e)
     # El modelo contestó en texto en vez de usar la herramienta: lo tomamos como respuesta directa.
-    return {"buscar": False, "consulta": "", "respuesta": (msj.get("content") or "").strip()}
+    return {"buscar": False, "consulta": "", "respuesta": (msj.get("content") or "").strip(), "lugar_clima": ""}
 
 
 def responder_con_resultados(pregunta: str, resultados: str, sistema: str,
@@ -250,6 +262,58 @@ def buscar_brave(consulta: str, reloj: Reloj, n: int = 5) -> List[Dict[str, str]
             for x in r.json().get("web", {}).get("results", [])[:n]]
 
 
+def buscar_tavily(consulta: str, reloj: Reloj, n: int = 5) -> List[Dict[str, str]]:
+    """Gratis hasta 1000 consultas al mes sin tarjeta; hecho para modelos de lenguaje."""
+    r = SESION.post(
+        "https://api.tavily.com/search",
+        json={"query": consulta, "max_results": n, "search_depth": "basic", "include_answer": True,
+              "country": "mexico"},
+        headers={"Authorization": "Bearer " + TAVILY_API_KEY, "Content-Type": "application/json"},
+        timeout=reloj.tiempo_para(3.5),
+    )
+    r.raise_for_status()
+    datos = r.json()
+    resultados = []  # type: List[Dict[str, str]]
+    if datos.get("answer"):
+        resultados.append({"titulo": "Resumen", "resumen": datos["answer"]})
+    for x in datos.get("results", [])[:n]:
+        resultados.append({"titulo": x.get("title", ""), "resumen": _limpiar_html(x.get("content", ""))[:400]})
+    return resultados
+
+
+def buscar_serper(consulta: str, reloj: Reloj, n: int = 5) -> List[Dict[str, str]]:
+    """Resultados de Google; 2500 consultas gratis al registrarse, sin tarjeta."""
+    r = SESION.post(
+        "https://google.serper.dev/search",
+        json={"q": consulta, "gl": "mx", "hl": "es", "num": n},
+        headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+        timeout=reloj.tiempo_para(3.0),
+    )
+    r.raise_for_status()
+    datos = r.json()
+    resultados = []  # type: List[Dict[str, str]]
+    caja = datos.get("answerBox") or {}
+    if caja.get("answer") or caja.get("snippet"):
+        resultados.append({"titulo": caja.get("title", "Respuesta destacada"),
+                           "resumen": caja.get("answer") or caja.get("snippet")})
+    for x in datos.get("organic", [])[:n]:
+        resultados.append({"titulo": x.get("title", ""), "resumen": x.get("snippet", "")})
+    return resultados
+
+
+def buscar_google(consulta: str, reloj: Reloj, n: int = 5) -> List[Dict[str, str]]:
+    """Google Programmable Search: 100 consultas al día gratis. Necesita llave de Google Cloud y el
+    identificador (cx) de un buscador programable configurado para buscar en toda la web."""
+    r = SESION.get(
+        "https://www.googleapis.com/customsearch/v1",
+        params={"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": consulta, "gl": "mx", "hl": "es", "lr": "lang_es", "num": n},
+        timeout=reloj.tiempo_para(3.0),
+    )
+    r.raise_for_status()
+    return [{"titulo": x.get("title", ""), "resumen": _limpiar_html(x.get("snippet", ""))}
+            for x in r.json().get("items", [])[:n]]
+
+
 def buscar_duckduckgo(consulta: str, reloj: Reloj, n: int = 5) -> List[Dict[str, str]]:
     """Sin llave, pero DuckDuckGo bloquea con frecuencia a los servidores (responde 202 con un reto)."""
     url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": consulta, "kl": "mx-es"})
@@ -295,6 +359,12 @@ def buscar(consulta: str, reloj: Reloj) -> str:
     fuentes = []
     if BRAVE_API_KEY:
         fuentes.append(("Brave", buscar_brave))
+    if TAVILY_API_KEY:
+        fuentes.append(("Tavily", buscar_tavily))
+    if SERPER_API_KEY:
+        fuentes.append(("Serper", buscar_serper))
+    if GOOGLE_API_KEY and GOOGLE_CX:
+        fuentes.append(("Google", buscar_google))
     fuentes.append(("DuckDuckGo", buscar_duckduckgo))
     fuentes.append(("Wikipedia", buscar_wikipedia))
     for nombre, fn in fuentes:
@@ -309,6 +379,95 @@ def buscar(consulta: str, reloj: Reloj) -> str:
             logger.info("Búsqueda por %s: %d resultados", nombre, len(resultados))
             return "\n".join("- %s: %s" % (x["titulo"], x["resumen"]) for x in resultados)
     return "(sin resultados)"
+
+
+# ---------------------------------------------------------------- clima (Open-Meteo, sin llave)
+
+CODIGOS_TIEMPO = [
+    ((0,), "despejado"), ((1,), "mayormente despejado"), ((2,), "parcialmente nublado"), ((3,), "nublado"),
+    ((45, 48), "con niebla"), ((51, 53, 55, 56, 57), "con llovizna"), ((61, 63, 65, 66, 67), "con lluvia"),
+    ((71, 73, 75, 77), "con nieve"), ((80, 81, 82), "con chubascos"), ((85, 86), "con nevadas"),
+    ((95, 96, 99), "con tormenta"),
+]
+
+
+def _describir_codigo(codigo: int) -> str:
+    for codigos, texto in CODIGOS_TIEMPO:
+        if codigo in codigos:
+            return texto
+    return ""
+
+
+PAISES_ISO = {"méxico": "mx", "mexico": "mx", "españa": "es", "argentina": "ar", "colombia": "co",
+              "chile": "cl", "perú": "pe", "peru": "pe", "estados unidos": "us"}
+
+
+def _ubicar(nombre: str, reloj: Reloj) -> Optional[Dict[str, Any]]:
+    """Coordenadas de una ciudad. Nominatim (OpenStreetMap) entiende «Querétaro» como la capital y no
+    como un pueblo de Chiapas, que es lo que devuelve el geocodificador de Open-Meteo; se prueba
+    primero acotado al país de LUGAR y, si no hay nada, sin acotar (para ciudades de fuera)."""
+    pais = LUGAR.split(",")[-1].strip().lower() if "," in LUGAR else ""
+    iso = PAISES_ISO.get(pais, "")
+    for codigos in ([iso] if iso else []) + [""]:
+        try:
+            params = {"q": nombre, "format": "jsonv2", "limit": 5, "accept-language": "es"}
+            if codigos:
+                params["countrycodes"] = codigos
+            r = SESION.get("https://nominatim.openstreetmap.org/search", params=params,
+                           headers={"User-Agent": "mi-asistente-alexa/1.0"}, timeout=reloj.tiempo_para(2.5))
+            r.raise_for_status()
+            res = r.json()
+        except SinTiempo:
+            raise
+        except Exception as e:
+            logger.info("Nominatim falló: %s", e)
+            res = []
+        if res:
+            # Acotado al país solo aceptamos ciudades de verdad; un «Madrid» que sea ranchería en México
+            # no cuenta, y así la segunda pasada, sin país, encuentra la capital de España.
+            tipos = ("city", "town", "administrative") if codigos else ("city", "town", "village", "administrative")
+            ciudades = [x for x in res if x.get("type") in tipos]
+            if not ciudades and codigos:
+                continue
+            x = (ciudades or res)[0]
+            partes = [p.strip() for p in (x.get("display_name") or nombre).split(",")]
+            return {"latitude": float(x["lat"]), "longitude": float(x["lon"]),
+                    "name": partes[0], "admin1": partes[-1] if len(partes) > 1 else ""}
+    # Respaldo: geocodificador de Open-Meteo, el más poblado del país configurado.
+    g = SESION.get("https://geocoding-api.open-meteo.com/v1/search",
+                   params={"name": nombre, "count": 5, "language": "es", "format": "json"},
+                   timeout=reloj.tiempo_para(2.5)).json()
+    candidatos = g.get("results") or []
+    if not candidatos:
+        return None
+    candidatos.sort(key=lambda c: ((c.get("country") or "").lower() == pais, c.get("population") or 0), reverse=True)
+    c = candidatos[0]
+    return {"latitude": c["latitude"], "longitude": c["longitude"], "name": c.get("name"),
+            "admin1": c.get("admin1") or c.get("country") or ""}
+
+
+def clima(lugar: str, reloj: Reloj) -> str:
+    """Pronóstico de tres días para una ciudad. Devuelve texto para que el modelo lo redacte."""
+    nombre = lugar if lugar and lugar.upper() != "AQUI" else LUGAR.split(",")[0].strip()
+    c = _ubicar(nombre, reloj)
+    if not c:
+        return "(sin resultados)"
+    f = SESION.get("https://api.open-meteo.com/v1/forecast",
+                   params={"latitude": c["latitude"], "longitude": c["longitude"], "timezone": "auto",
+                           "forecast_days": 3, "current": "temperature_2m,weather_code",
+                           "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code"},
+                   timeout=reloj.tiempo_para(2.5)).json()
+    d = f.get("daily") or {}
+    actual = f.get("current") or {}
+    nombres = ["hoy", "mañana", "pasado mañana"]
+    lineas = ["Lugar: %s, %s. Ahora: %s grados, %s." % (
+        c.get("name"), c.get("admin1"), actual.get("temperature_2m"),
+        _describir_codigo(int(actual.get("weather_code", -1))) or "sin dato")]
+    for i, fecha in enumerate(d.get("time", [])[:3]):
+        lineas.append("%s (%s): máxima %s, mínima %s grados, probabilidad de lluvia %s por ciento, %s." % (
+            nombres[i], fecha, d["temperature_2m_max"][i], d["temperature_2m_min"][i],
+            d["precipitation_probability_max"][i], _describir_codigo(int(d["weather_code"][i])) or "sin dato"))
+    return "\n".join(lineas)
 
 
 # ---------------------------------------------------------------- voz y pantalla
@@ -455,7 +614,18 @@ class PreguntaHandler(AbstractRequestHandler):
         pie = ""
         try:
             d = decidir(pregunta, sistema, _historial(handler_input), reloj)
-            if d["buscar"]:
+            if d.get("lugar_clima"):
+                _avisar_progreso(handler_input, "Déjame ver el pronóstico.")
+                try:
+                    resultados = clima(d["lugar_clima"], reloj)
+                except SinTiempo:
+                    raise
+                except Exception as e:
+                    logger.warning("Open-Meteo falló: %s", e)
+                    resultados = "(sin resultados)"
+                respuesta = responder_con_resultados(pregunta, resultados, sistema, _historial(handler_input), reloj)
+                pie = "Pronóstico de Open-Meteo" if resultados != "(sin resultados)" else "Sin acceso al pronóstico"
+            elif d["buscar"]:
                 _avisar_progreso(handler_input, "Déjame buscar.")
                 consulta = d["consulta"] or pregunta
                 resultados = buscar(consulta, reloj)

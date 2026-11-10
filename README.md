@@ -37,10 +37,25 @@ Se dice **«Alexa, abre mi asistente»** y luego se conversa sin repetir el nomb
 
 Tiempos medidos: 0.5 a 1.3 s una respuesta directa, 1.5 a 2.6 s con búsqueda.
 
-Búsqueda, en orden: **Brave** si hay llave (la única fiable para noticias, precios y deportes),
+Búsqueda, en orden, usando la primera que tenga llave: **Brave**, **Tavily**, **Serper** o **Google**; después
 **DuckDuckGo** sin llave (bloquea a los servidores con un reto anti-bots casi siempre) y
-**Wikipedia en español** (siempre responde, pero solo para hechos generales). Sin ninguna, el
-modelo contesta con lo que sabe avisando que no pudo verificar.
+**Wikipedia en español** (siempre responde, pero solo para hechos generales). Sin ninguna llave, el
+modelo contesta con lo que sabe avisando que no pudo verificar. Con una llave, las noticias,
+precios y deportes salen bien.
+
+| Buscador | Gratis | Tarjeta | Dónde |
+|---|---|---|---|
+| Tavily | 1000 consultas al mes | No | <https://app.tavily.com> |
+| Serper | 2500 consultas al registrarse (no se renuevan) | No | <https://serper.dev> |
+| Google Programmable Search | 100 consultas al día | No | llave en <https://console.cloud.google.com/apis/credentials> (API «Custom Search») y `cx` de un buscador en <https://programmablesearchengine.google.com> con «Buscar en toda la web» |
+| Brave | plan gratuito | Pide método de pago | <https://api-dashboard.search.brave.com> |
+
+Las llaves van en `secretos.json`: `TAVILY_API_KEY`, `SERPER_API_KEY`, `GOOGLE_API_KEY` + `GOOGLE_CX`
+o `BRAVE_API_KEY`. Basta una.
+
+**Clima** sin llave: las preguntas de lluvia, temperatura o pronóstico van directo a
+**Open-Meteo**, para la ciudad que se mencione o la de `LUGAR`. La ciudad se ubica con Nominatim
+(OpenStreetMap) y, si falla, con el geocodificador de Open-Meteo.
 
 Memoria: el nombre y las notas («recuerda que…») se guardan por `personId` cuando Alexa
 reconoce la voz; si no hay perfil de voz, por cuenta. Dentro de una sesión viajan los últimos
