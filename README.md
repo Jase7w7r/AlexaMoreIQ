@@ -147,10 +147,13 @@ Para que aparezca en los dispositivos de la cuenta hay que habilitarla una vez:
 **Si la skill la creaste en la consola** en vez de con `smapi.py crear`, sube el manifiesto de
 aquí para añadir la pantalla y el permiso de perfil de voz:
 `herramientas/smapi.py manifiesto <skillId> skill-package/skill.json`. La herramienta conserva el
-`endpoint` (la función Lambda) que Amazon puso al crearla; si se sube un manifiesto sin él, la
-skill queda sin backend y `habilitar` responde 403 «missing required property: endpoint». El ARN
-tiene la forma `arn:aws:lambda:us-east-1:<cuenta de Amazon>:function:<uuid de la skill>:Release_0`
-y la cuenta se ve en la consola de CloudWatch a la que lleva el `logUrl` de `smapi.py estado`.
+`endpoint` (la función Lambda) y las `regions` que Amazon puso al crearla; si se sube un
+manifiesto sin ellos, la skill queda sin backend, `habilitar` responde 403 «missing required
+property: endpoint» y la consola avisa que «uno o más puntos finales regionales han cambiado» y
+deja de desplegar. Los ARN tienen la forma
+`arn:aws:lambda:<región>:<cuenta de Amazon>:function:<uuid de la skill>:Release_0`, con
+`us-east-1` como endpoint principal y `eu-west-1` (EU) y `us-west-2` (FE) como regiones; la cuenta
+se ve en la consola de CloudWatch a la que lleva el `logUrl` de `smapi.py estado`.
 
 Probar sin tocar el Echo:
 

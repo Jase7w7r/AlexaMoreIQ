@@ -94,10 +94,12 @@ def manifiesto(skill_id, ruta_manifiesto):
     # El manifiesto del repositorio no trae el endpoint (lo pone Amazon al alojar la skill). Si se
     # sube sin él, la skill queda sin Lambda y no se puede habilitar; se conserva el que ya tenga.
     _, _, actual = llamar("GET", "/v1/skills/%s/stages/development/manifest" % skill_id)
-    endpoint = actual.get("manifest", {}).get("apis", {}).get("custom", {}).get("endpoint")
-    if endpoint and not cuerpo["manifest"].get("apis", {}).get("custom", {}).get("endpoint"):
-        cuerpo["manifest"].setdefault("apis", {}).setdefault("custom", {})["endpoint"] = endpoint
-        print("conservo el endpoint:", endpoint.get("uri"))
+    custom_actual = actual.get("manifest", {}).get("apis", {}).get("custom", {})
+    custom_nuevo = cuerpo["manifest"].setdefault("apis", {}).setdefault("custom", {})
+    for clave in ("endpoint", "regions"):   # la skill alojada tiene endpoint en NA y regiones EU y FE
+        if custom_actual.get(clave) and not custom_nuevo.get(clave):
+            custom_nuevo[clave] = custom_actual[clave]
+            print("conservo", clave)
     codigo, cab, datos = llamar("PUT", "/v1/skills/%s/stages/development/manifest" % skill_id, cuerpo)
     print("manifiesto enviado:", codigo, datos or "")
     for _ in range(30):
