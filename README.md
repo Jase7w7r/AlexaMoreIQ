@@ -97,7 +97,18 @@ La URL del repositorio la da `herramientas/smapi.py alojada <skillId>`. Luego co
 `repo-amazon/lambda/` los archivos de `lambda/` (incluido tu `secretos.json`), borra el
 `utils.py` de la plantilla, haz commit y `git push origin master` con las mismas opciones `-c`
 del clone. Cada push a `master` despliega la etapa de desarrollo; `smapi.py estado <skillId>`
-muestra `hostedSkillDeployment` hasta que diga `SUCCEEDED`.
+muestra `hostedSkillDeployment` con el commit desplegado hasta que diga `SUCCEEDED`.
+
+**Ojo con las ramas.** El editor de la consola web guarda sus cambios en la rama `dev` y no siempre
+dispara el despliegue; lo que corre en la etapa de desarrollo es lo último que llegó a `master`.
+Si editaste algo en la consola (por ejemplo `secretos.json`) y la skill sigue sin verlo, trae
+`dev` a `master` desde tu clon:
+
+```bash
+git fetch origin && git push origin origin/dev:master
+```
+
+y vuelve a mirar `smapi.py estado`: el `commitId` debe ser el de tu cambio.
 
 Para que aparezca en los dispositivos de la cuenta hay que habilitarla una vez:
 `PUT /v1/skills/<skillId>/stages/development/enablement` (en `smapi.py` basta añadir la llamada,
