@@ -41,9 +41,9 @@ logger.setLevel(logging.INFO)
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/")
-MODELO = "nvidia/nemotron-3.5-lightning-30b-a3b"        # rápido: decide y contesta lo sencillo
-MODELO_FUERTE = ""                                        # para preguntas difíciles; se fija en secretos.json
-MODELO_RESPALDO = "nvidia/nemotron-3-ultra-550b-a55b"     # si el principal falla
+MODELO = "nvidia/nemotron-3.5-lightning-30b-a3b"          # rápido (0.5-0.8 s): decide y contesta lo sencillo
+MODELO_FUERTE = "nvidia/nemotron-3.5-super-vl-120b-a12b"   # difícil (1.4-2.1 s): razona mejor y cabe en el tiempo
+MODELO_RESPALDO = "nvidia/nemotron-3.5-super-vl-120b-a12b" # si el rápido falla
 LUGAR = "México"      # se afina con la clave LUGAR de secretos.json
 TIEMPO_LIMITE = 7.0          # Alexa corta a los 8 s; dejamos margen
 TURNOS_EN_SESION = 6         # pares pregunta/respuesta que viajan en la sesión

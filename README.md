@@ -223,8 +223,19 @@ Las advertencias `SyntaxWarning` vienen del SDK de Amazon con Python 3.12; en el
   el nombre que tenga la skill en Amazon; para imponer el del archivo, `INVOCACION=local`.
 - **Modelos**: `MODELO`, `MODELO_FUERTE` y `MODELO_RESPALDO`, en `secretos.json` o al inicio de
   `lambda_function.py`. El rápido debe contestar en menos de un segundo y aceptar
-  `chat_template_kwargs.enable_thinking=false`; el fuerte tiene hasta 5.5 s, así que sirve uno
-  grande sin razonamiento. Los que razonan antes de contestar se pasan de los 8 segundos de Alexa.
+  `chat_template_kwargs.enable_thinking=false`; el fuerte tiene hasta 5.5 s. Medido el 10 nov
+  2026 con dos preguntas de voz y el razonamiento apagado (tiempo neto por respuesta):
+
+  | Modelo | Tiempo | Uso |
+  |---|---|---|
+  | `nvidia/nemotron-3.5-lightning-30b-a3b` | 0.5-0.8 s | rápido (por omisión) |
+  | `nvidia/nemotron-3.5-super-vl-120b-a12b` | 1.4-2.1 s | fuerte y respaldo (por omisión) |
+  | `minimaxai/minimax-m3.1-flash` | 1.2-2.8 s | alternativa de fuerte |
+  | `google/gemma-4-31b-it` | 1.3-3.5 s | correcto |
+  | `nvidia/nemotron-3-ultra-550b-a55b` | 2-5.3 s | demasiado justo para Alexa |
+  | DeepSeek V4.1 Flash, GLM 5.3 Flash, Mistral Large 4, Step 5 | 30-300 s | razonan aunque se les pida que no |
+
+  El catálogo cambia: `nvidia -l` (o `listar_modelos`) dice qué sigue disponible.
 - **Largo de voz**: `MAX_VOZ` (700 caracteres). **Turnos en sesión**: `TURNOS_EN_SESION` (6).
 
 ## Límites conocidos
