@@ -41,8 +41,9 @@ logger.setLevel(logging.INFO)
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/")
-MODELO = os.environ.get("ASISTENTE_MODELO", "nvidia/nemotron-3.5-lightning-30b-a3b")
-MODELO_RESPALDO = os.environ.get("ASISTENTE_MODELO_RESPALDO", "nvidia/nemotron-3-super-120b-a12b")
+MODELO = "nvidia/nemotron-3.5-lightning-30b-a3b"        # rápido: decide y contesta lo sencillo
+MODELO_FUERTE = ""                                        # para preguntas difíciles; se fija en secretos.json
+MODELO_RESPALDO = "nvidia/nemotron-3-ultra-550b-a55b"     # si el principal falla
 LUGAR = "México"      # se afina con la clave LUGAR de secretos.json
 TIEMPO_LIMITE = 7.0          # Alexa corta a los 8 s; dejamos margen
 TURNOS_EN_SESION = 6         # pares pregunta/respuesta que viajan en la sesión
@@ -86,6 +87,14 @@ CORREOS_SIN_MODELO = bool(SECRETOS.get("CORREOS_SIN_MODELO"))   # True: solo lis
 # Dónde está la casa, para que el modelo responda con ese contexto. Va en secretos.json
 # (clave "LUGAR") para no dejar datos personales en el código.
 LUGAR = SECRETOS.get("LUGAR") or LUGAR
+# Modelos: "MODELO" (rápido), "MODELO_FUERTE" (para lo difícil) y "MODELO_RESPALDO" también se
+# pueden fijar en secretos.json sin tocar el código.
+MODELO = SECRETOS.get("MODELO") or MODELO
+MODELO_FUERTE = SECRETOS.get("MODELO_FUERTE") or MODELO_FUERTE
+MODELO_RESPALDO = SECRETOS.get("MODELO_RESPALDO") or MODELO_RESPALDO
+# "CONTEXTO": texto libre sobre la casa que el modelo debe saber (quiénes viven, horarios, gustos).
+CONTEXTO = (SECRETOS.get("CONTEXTO") or "").strip()
+TURNOS_PERSISTENTES = 6      # turnos que se recuerdan de una sesión a otra, por persona
 
 
 class SinTiempo(Exception):
@@ -139,8 +148,14 @@ HERRAMIENTA_DECIDIR = [{
                                     "calor, paraguas): la ciudad de la que se pregunta, o la palabra AQUI si no "
                                     "menciona ninguna. Vacío si no es de clima."),
                 },
+                "dificil": {
+                    "type": "boolean",
+                    "description": ("true si contestar bien exige razonar, calcular, comparar opciones, aconsejar, "
+                                    "redactar algo creativo o explicar a fondo; false si es un dato, una definición "
+                                    "corta o charla. Si es true, deja respuesta vacía: contestará otro modelo."),
+                },
             },
-            "required": ["necesita_busqueda", "consulta", "respuesta", "lugar_clima"],
+            "required": ["necesita_busqueda", "consulta", "respuesta", "lugar_clima", "dificil"],
         },
     },
 }]
@@ -160,6 +175,8 @@ def _prompt_sistema(persona: Dict[str, Any]) -> str:
         "Alexa ya se encarga de alarmas, temporizadores, música y domótica; si te piden eso, "
         "di que se lo pidan directamente a Alexa.",
     ]
+    if CONTEXTO:
+        partes.append("Sobre esta casa: " + CONTEXTO)
     nombre = persona.get("nombre")
     if nombre:
         partes.append("Quien te habla se llama %s; puedes llamarle por su nombre de vez en cuando." % nombre)
@@ -220,11 +237,49 @@ def decidir(pregunta: str, sistema: str, historial: List[Dict[str, str]], reloj:
                 "consulta": (d.get("consulta") or "").strip(),
                 "respuesta": (d.get("respuesta") or "").strip(),
                 "lugar_clima": (d.get("lugar_clima") or "").strip(),
+                "dificil": bool(d.get("dificil")),
             }
         except Exception as e:
             logger.warning("Argumentos de decidir inválidos: %s", e)
     # El modelo contestó en texto en vez de usar la herramienta: lo tomamos como respuesta directa.
-    return {"buscar": False, "consulta": "", "respuesta": (msj.get("content") or "").strip(), "lugar_clima": ""}
+    return {"buscar": False, "consulta": "", "respuesta": (msj.get("content") or "").strip(), "lugar_clima": "", "dificil": False}
+
+
+def responder_fuerte(pregunta: str, sistema: str, historial: List[Dict[str, str]], reloj: Reloj) -> str:
+    """Respuesta con el modelo fuerte (o el rápido si no hay fuerte) para preguntas que lo ameritan."""
+    mensajes = [{"role": "system", "content": sistema + " Esta pregunta merece una respuesta pensada: razona en "
+                                                        "silencio y di solo la conclusión, en tres a cinco frases habladas."}]
+    for turno in historial[-4:]:
+        mensajes.append({"role": "user", "content": turno["u"]})
+        mensajes.append({"role": "assistant", "content": turno["a"]})
+    mensajes.append({"role": "user", "content": pregunta})
+    if MODELO_FUERTE:
+        try:
+            return (_llamar(MODELO_FUERTE, mensajes, reloj, 5.5, max_tokens=450).get("content") or "").strip()
+        except SinTiempo:
+            raise
+        except Exception as e:
+            logger.warning("Modelo fuerte falló (%s); contesta el rápido", e)
+    return (_llamar_con_respaldo(mensajes, reloj, 4.0, max_tokens=450).get("content") or "").strip()
+
+
+def ampliar(turno: Dict[str, str], sistema: str, reloj: Reloj) -> str:
+    """«Cuéntame más»: desarrolla la última respuesta sin repetirla."""
+    mensajes = [
+        {"role": "system", "content": sistema + " Te piden ampliar tu última respuesta: añade lo que faltó, con "
+                                                "ejemplos o detalles útiles, sin repetir lo ya dicho, en tres a cinco frases."},
+        {"role": "user", "content": turno["u"]},
+        {"role": "assistant", "content": turno["a"]},
+        {"role": "user", "content": "Cuéntame más sobre eso."},
+    ]
+    modelo = MODELO_FUERTE or MODELO
+    try:
+        return (_llamar(modelo, mensajes, reloj, 5.5, max_tokens=450).get("content") or "").strip()
+    except SinTiempo:
+        raise
+    except Exception as e:
+        logger.warning("Ampliar con %s falló (%s)", modelo, e)
+        return (_llamar_con_respaldo(mensajes, reloj, 4.0, max_tokens=450).get("content") or "").strip()
 
 
 def responder_con_resultados(pregunta: str, resultados: str, sistema: str,
@@ -760,13 +815,28 @@ def _guardar_persona(handler_input: HandlerInput, datos: Dict[str, Any]) -> None
 
 
 def _historial(handler_input: HandlerInput) -> List[Dict[str, str]]:
-    return handler_input.attributes_manager.session_attributes.get("historial", [])
+    """Turnos de la sesión; al empezar una sesión se recuperan los últimos de la persona."""
+    sesion = handler_input.attributes_manager.session_attributes
+    if "historial" not in sesion:
+        try:
+            previos = handler_input.attributes_manager.persistent_attributes.get("historial") or []
+        except Exception:
+            previos = []
+        sesion["historial"] = list(previos)[-TURNOS_PERSISTENTES:]
+    return sesion["historial"]
 
 
 def _anotar_turno(handler_input: HandlerInput, pregunta: str, respuesta: str) -> None:
     h = _historial(handler_input)
-    h.append({"u": pregunta, "a": respuesta})
+    h.append({"u": pregunta[:300], "a": respuesta[:600]})
     handler_input.attributes_manager.session_attributes["historial"] = h[-TURNOS_EN_SESION:]
+    # También se guarda por persona, para retomar el hilo en la siguiente sesión.
+    try:
+        persona = _persona(handler_input)
+        persona["historial"] = h[-TURNOS_PERSISTENTES:]
+        _guardar_persona(handler_input, persona)
+    except Exception as e:
+        logger.info("No pude guardar el historial persistente: %s", e)
 
 
 # ---------------------------------------------------------------- manejadores
@@ -821,6 +891,10 @@ class PreguntaHandler(AbstractRequestHandler):
                 resultados = buscar(consulta, reloj)
                 respuesta = responder_con_resultados(pregunta, resultados, sistema, _historial(handler_input), reloj)
                 pie = ("Búsqueda: " + consulta) if resultados != "(sin resultados)" else "Sin acceso a búsqueda"
+            elif d.get("dificil") or not d["respuesta"]:
+                _avisar_progreso(handler_input, "Déjame pensarlo.")
+                respuesta = responder_fuerte(pregunta, sistema, _historial(handler_input), reloj)
+                pie = "Pensado con " + (MODELO_FUERTE or MODELO).split("/")[-1]
             else:
                 respuesta = d["respuesta"]
             if not respuesta:
@@ -875,6 +949,29 @@ class CorreoHandler(AbstractRequestHandler):
         _apl(handler_input, "Correo " + descripcion, "\n".join(lineas) if lineas else voz, pie)
         rb = handler_input.response_builder.speak(escapar_ssml(voz)).ask("¿Algo más?")
         return rb.response
+
+
+class MasHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("MasIntent")(handler_input)
+
+    def handle(self, handler_input):
+        h = _historial(handler_input)
+        if not h:
+            return _hablar(handler_input, "Todavía no te he contado nada. ¿Qué quieres saber?")
+        if not NVIDIA_API_KEY:
+            return _hablar(handler_input, "Me falta la llave del modelo.", seguir=False)
+        reloj = Reloj()
+        _avisar_progreso(handler_input, "Va.")
+        try:
+            respuesta = ampliar(h[-1], _prompt_sistema(_persona(handler_input)), reloj) or "No tengo más que añadir."
+        except SinTiempo:
+            respuesta = "Se me fue el tiempo. Pídemelo otra vez."
+        except Exception as e:
+            logger.exception("Fallo ampliando: %s", e)
+            respuesta = "No pude ampliarlo ahora. Inténtalo de nuevo."
+        _anotar_turno(handler_input, "cuéntame más", respuesta)
+        return _hablar(handler_input, respuesta, titulo="Más sobre: " + h[-1]["u"][:40])
 
 
 class NombreHandler(AbstractRequestHandler):
@@ -1047,7 +1144,7 @@ def _adaptador_memoria():
 
 
 sb = CustomSkillBuilder(persistence_adapter=_adaptador_memoria(), api_client=DefaultApiClient())
-for h in (LanzarHandler(), CorreoHandler(), PreguntaHandler(), NombreHandler(), RecordarHandler(), QuienSoyHandler(),
+for h in (LanzarHandler(), CorreoHandler(), MasHandler(), PreguntaHandler(), NombreHandler(), RecordarHandler(), QuienSoyHandler(),
           OlvidarHandler(), AyudaHandler(), SalirHandler(), FallbackHandler(), SesionTerminadaHandler()):
     sb.add_request_handler(h)
 sb.add_exception_handler(ErrorHandler())

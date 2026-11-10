@@ -53,6 +53,21 @@
           ]
         },
         {
+          "name": "MasIntent",
+          "samples": [
+            "cuéntame más",
+            "dame más detalles",
+            "explícame mejor",
+            "explícamelo mejor",
+            "sigue",
+            "continúa",
+            "y luego",
+            "dime más",
+            "amplía eso",
+            "no entendí explícalo de nuevo"
+          ]
+        },
+        {
           "name": "CorreoIntent",
           "slots": [
             { "name": "filtro", "type": "FILTRO_CORREO" },

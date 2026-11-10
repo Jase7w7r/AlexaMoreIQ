@@ -64,6 +64,22 @@ Memoria: el nombre y las notas («recuerda que…») se guardan por `personId` c
 reconoce la voz; si no hay perfil de voz, por cuenta. Dentro de una sesión viajan los últimos
 seis turnos para poder preguntar «¿y en qué año?».
 
+## Qué la hace más lista que un modelo suelto
+
+- **Dos modelos.** El rápido (`MODELO`, Nemotron 3.5 Lightning) decide y contesta lo sencillo en
+  menos de un segundo. Cuando la pregunta exige razonar, comparar, aconsejar o explicar a fondo,
+  la marca como difícil y la contesta `MODELO_FUERTE`, si está configurado en `secretos.json`,
+  con un presupuesto mayor de tiempo. Sin modelo fuerte, el rápido contesta con una instrucción
+  de pensar antes.
+- **Memoria.** Dentro de la sesión viajan los últimos seis turnos; al cerrar, se guardan por
+  persona y la siguiente sesión los recupera, así que «¿y en qué año?» funciona aunque haya
+  pasado un día. Las notas de «recuerda que…» entran en cada consulta.
+- **Contexto de la casa.** `"CONTEXTO"` en `secretos.json` es texto libre que el modelo sabe
+  siempre: quiénes viven, horarios, gustos, lo que quieras que tenga en cuenta.
+- **«Cuéntame más».** Amplía la última respuesta sin repetirla, con el modelo fuerte si lo hay.
+- **Datos reales.** Búsqueda web, pronóstico y correo entran como texto al modelo, que solo
+  redacta con lo que recibe.
+
 ## Resumen de correo (Gmail)
 
 «Alexa, pregúntale a mi asistente qué correos tengo», «resume mis correos no leídos», «revisa mi
@@ -205,9 +221,10 @@ Las advertencias `SyntaxWarning` vienen del SDK de Amazon con Python 3.12; en el
   (Build › Invocations). Dos palabras o más, minúsculas, sin «Alexa» ni marcas, y mejor palabras
   reales del español: Alexa reconoce peor las inventadas o recortadas. `smapi.py modelo` respeta
   el nombre que tenga la skill en Amazon; para imponer el del archivo, `INVOCACION=local`.
-- **Modelo**: `MODELO` y `MODELO_RESPALDO` al inicio de `lambda_function.py`. Debe ser rápido y
-  aceptar `chat_template_kwargs.enable_thinking=false`; los que razonan antes de contestar
-  (Nemotron 3 Ultra) se pasan de los 8 segundos y devuelven solo razonamiento.
+- **Modelos**: `MODELO`, `MODELO_FUERTE` y `MODELO_RESPALDO`, en `secretos.json` o al inicio de
+  `lambda_function.py`. El rápido debe contestar en menos de un segundo y aceptar
+  `chat_template_kwargs.enable_thinking=false`; el fuerte tiene hasta 5.5 s, así que sirve uno
+  grande sin razonamiento. Los que razonan antes de contestar se pasan de los 8 segundos de Alexa.
 - **Largo de voz**: `MAX_VOZ` (700 caracteres). **Turnos en sesión**: `TURNOS_EN_SESION` (6).
 
 ## Límites conocidos
