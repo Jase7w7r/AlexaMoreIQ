@@ -475,7 +475,11 @@ def clima(lugar: str, reloj: Reloj) -> str:
 def limpiar_para_voz(texto: str, maximo: int = MAX_VOZ) -> str:
     t = re.sub(r"[*_`#>]+", "", texto)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)   # enlaces markdown
+    t = re.sub(r"^\s*(?:[-•]|\d+[.)])\s+", "", t)              # viñeta al inicio
+    t = re.sub(r"\n\s*(?:[-•]|\d+[.)])\s+", ". ", t)           # viñetas y numeración: pausa entre puntos
+    t = re.sub(r"\s+-\s+", ". ", t)                            # guiones sueltos entre frases
     t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"([:,;.])\s*\.", r"\1", t)                     # «temas:.» → «temas:», «..» → «.»
     if len(t) > maximo:
         corte = t.rfind(". ", 0, maximo)
         t = t[: corte + 1] if corte > maximo // 2 else t[:maximo].rstrip() + "…"
