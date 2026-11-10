@@ -69,11 +69,14 @@ def alojada(skill_id):
     return datos
 
 
-def modelo(skill_id, ruta_modelo):
+def modelo(skill_id, ruta_modelo, locale=None):
+    """Sube el modelo a un locale (por omisión es-MX, o la variable LOCALE). El mismo JSON sirve
+    para es-US y es-ES: así la skill responde aunque el Echo esté en otro español."""
+    locale = locale or os.environ.get("LOCALE") or "es-MX"
     with open(ruta_modelo, "r", encoding="utf-8") as f:
         cuerpo = json.load(f)
     # El nombre de invocación es decisión de quien usa la skill y se cambia en la consola; se
-    # respeta el que ya tenga, salvo que se pida lo contrario con INVOCACION=local.
+    # respeta el que ya tenga (en es-MX, el locale principal), salvo INVOCACION=local.
     if os.environ.get("INVOCACION") != "local":
         r = requests.get(API + "/v1/skills/%s/stages/development/interactionModel/locales/es-MX" % skill_id, headers=CAB, timeout=60)
         if r.status_code == 200:
@@ -82,13 +85,13 @@ def modelo(skill_id, ruta_modelo):
             if remoto and remoto != local:
                 cuerpo["interactionModel"]["languageModel"]["invocationName"] = remoto
                 print("conservo el nombre de invocación de Amazon: «%s» (el local es «%s»)" % (remoto, local))
-    codigo, cab, datos = llamar("PUT", "/v1/skills/%s/stages/development/interactionModel/locales/es-MX" % skill_id, cuerpo)
-    print("modelo enviado:", codigo, datos or "")
+    codigo, cab, datos = llamar("PUT", "/v1/skills/%s/stages/development/interactionModel/locales/%s" % (skill_id, locale), cuerpo)
+    print("modelo %s enviado:" % locale, codigo, datos or "")
     # Esperar a que compile
     for _ in range(60):
         time.sleep(5)
         _, _, est = llamar("GET", "/v1/skills/%s/status?resource=interactionModel" % skill_id)
-        im = est.get("interactionModel", {}).get("es-MX", {}).get("lastUpdateRequest", {})
+        im = est.get("interactionModel", {}).get(locale, {}).get("lastUpdateRequest", {})
         print("  estado modelo:", im.get("status"), (im.get("errors") or im.get("warnings") or ""))
         if im.get("status") in ("SUCCEEDED", "FAILED"):
             if im.get("errors"):
@@ -122,7 +125,7 @@ def manifiesto(skill_id, ruta_manifiesto):
 
 
 def simular(skill_id, frase, sesion_nueva=True):
-    cuerpo = {"input": {"content": frase}, "device": {"locale": "es-MX"},
+    cuerpo = {"input": {"content": frase}, "device": {"locale": os.environ.get("LOCALE") or "es-MX"},
               "session": {"mode": "FORCE_NEW_SESSION" if sesion_nueva else "DEFAULT"}}
     _, _, datos = llamar("POST", "/v2/skills/%s/stages/development/simulations" % skill_id, cuerpo)
     sim_id = datos["id"]
@@ -157,7 +160,7 @@ if __name__ == "__main__":
     elif orden == "alojada":
         alojada(sys.argv[2])
     elif orden == "modelo":
-        modelo(sys.argv[2], sys.argv[3])
+        modelo(sys.argv[2], sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else None)
     elif orden == "manifiesto":
         manifiesto(sys.argv[2], sys.argv[3])
     elif orden == "simular":
