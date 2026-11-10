@@ -10,6 +10,7 @@ Corre antes cualquier `ask smapi ...` para que el CLI refresque el token.
     python herramientas/smapi.py modelo <skillId> skill-package/interactionModels/custom/es-MX.json
     python herramientas/smapi.py manifiesto <skillId> skill-package/skill.json
     python herramientas/smapi.py simular <skillId> "abre mi asistente"
+    python herramientas/smapi.py habilitar <skillId>                  # activa la etapa de desarrollo en tus dispositivos
 """
 import json
 import os
@@ -90,6 +91,13 @@ def modelo(skill_id, ruta_modelo):
 def manifiesto(skill_id, ruta_manifiesto):
     with open(ruta_manifiesto, "r", encoding="utf-8") as f:
         cuerpo = json.load(f)
+    # El manifiesto del repositorio no trae el endpoint (lo pone Amazon al alojar la skill). Si se
+    # sube sin él, la skill queda sin Lambda y no se puede habilitar; se conserva el que ya tenga.
+    _, _, actual = llamar("GET", "/v1/skills/%s/stages/development/manifest" % skill_id)
+    endpoint = actual.get("manifest", {}).get("apis", {}).get("custom", {}).get("endpoint")
+    if endpoint and not cuerpo["manifest"].get("apis", {}).get("custom", {}).get("endpoint"):
+        cuerpo["manifest"].setdefault("apis", {}).setdefault("custom", {})["endpoint"] = endpoint
+        print("conservo el endpoint:", endpoint.get("uri"))
     codigo, cab, datos = llamar("PUT", "/v1/skills/%s/stages/development/manifest" % skill_id, cuerpo)
     print("manifiesto enviado:", codigo, datos or "")
     for _ in range(30):
@@ -142,3 +150,6 @@ if __name__ == "__main__":
         manifiesto(sys.argv[2], sys.argv[3])
     elif orden == "simular":
         simular(sys.argv[2], " ".join(sys.argv[3:]), sesion_nueva=os.environ.get("SESION_NUEVA", "1") == "1")
+    elif orden == "habilitar":
+        codigo, _, datos = llamar("PUT", "/v1/skills/%s/stages/development/enablement" % sys.argv[2])
+        print("habilitada:", codigo, datos or "")

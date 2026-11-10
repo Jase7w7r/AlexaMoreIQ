@@ -111,8 +111,16 @@ git fetch origin && git push origin origin/dev:master
 y vuelve a mirar `smapi.py estado`: el `commitId` debe ser el de tu cambio.
 
 Para que aparezca en los dispositivos de la cuenta hay que habilitarla una vez:
-`PUT /v1/skills/<skillId>/stages/development/enablement` (en `smapi.py` basta añadir la llamada,
-o hacerlo desde la pestaña Test de la consola, cambiando a **Development**).
+`herramientas/smapi.py habilitar <skillId>` (o desde la pestaña Test de la consola, cambiando a
+**Development**).
+
+**Si la skill la creaste en la consola** en vez de con `smapi.py crear`, sube el manifiesto de
+aquí para añadir la pantalla y el permiso de perfil de voz:
+`herramientas/smapi.py manifiesto <skillId> skill-package/skill.json`. La herramienta conserva el
+`endpoint` (la función Lambda) que Amazon puso al crearla; si se sube un manifiesto sin él, la
+skill queda sin backend y `habilitar` responde 403 «missing required property: endpoint». El ARN
+tiene la forma `arn:aws:lambda:us-east-1:<cuenta de Amazon>:function:<uuid de la skill>:Release_0`
+y la cuenta se ve en la consola de CloudWatch a la que lleva el `logUrl` de `smapi.py estado`.
 
 Probar sin tocar el Echo:
 
