@@ -1,0 +1,45 @@
+{
+  "manifest": {
+    "manifestVersion": "1.0",
+    "publishingInformation": {
+      "locales": {
+        "es-MX": {
+          "name": "Mi asistente",
+          "summary": "Asistente conversacional de la casa con búsqueda web y memoria por persona.",
+          "description": "Responde preguntas generales, busca información actual en internet cuando hace falta y recuerda lo que cada persona de la casa le pide recordar. Reconoce quién habla mediante los perfiles de voz de Alexa.",
+          "examplePhrases": [
+            "Alexa, abre mi asistente",
+            "Alexa, pregúntale a mi asistente cuánto está el dólar",
+            "Alexa, dile a mi asistente que recuerde que el martes tengo dentista"
+          ],
+          "keywords": ["asistente", "preguntas", "búsqueda"]
+        }
+      },
+      "isAvailableWorldwide": false,
+      "distributionCountries": ["MX"],
+      "testingInstructions": "Skill de uso doméstico, no se publica.",
+      "category": "KNOWLEDGE_AND_TRIVIA"
+    },
+    "apis": {
+      "custom": {
+        "interfaces": [
+          { "type": "ALEXA_PRESENTATION_APL", "supportedViewports": [
+            { "mode": "HUB", "shape": "RECTANGLE", "minWidth": 960, "maxWidth": 960, "minHeight": 480, "maxHeight": 480 },
+            { "mode": "HUB", "shape": "RECTANGLE", "minWidth": 1024, "maxWidth": 1280, "minHeight": 600, "maxHeight": 800 },
+            { "mode": "TV", "shape": "RECTANGLE", "minWidth": 960, "maxWidth": 1920, "minHeight": 540, "maxHeight": 1080 }
+          ] }
+        ]
+      }
+    },
+    "permissions": [
+      { "name": "alexa::person_id:read" }
+    ],
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false
+    }
+  }
+}

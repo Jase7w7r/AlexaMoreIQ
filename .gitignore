@@ -1,0 +1,8 @@
+lambda/secretos.json
+lambda/memoria_local.json
+pruebas/memoria_local.json
+__pycache__/
+.ask/
+.venv/
+repo-amazon/
+herramientas/skill_id.txt

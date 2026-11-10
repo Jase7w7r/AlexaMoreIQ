@@ -1,0 +1,46 @@
+{
+  "type": "APL",
+  "version": "2023.3",
+  "theme": "dark",
+  "mainTemplate": {
+    "parameters": ["datos"],
+    "items": [
+      {
+        "type": "Container",
+        "width": "100vw",
+        "height": "100vh",
+        "paddingLeft": "6vw",
+        "paddingRight": "6vw",
+        "paddingTop": "5vh",
+        "paddingBottom": "5vh",
+        "justifyContent": "center",
+        "items": [
+          {
+            "type": "Text",
+            "text": "${datos.titulo}",
+            "fontSize": "4.5vh",
+            "color": "#9ec5ff",
+            "maxLines": 1,
+            "paddingBottom": "2vh"
+          },
+          {
+            "type": "Text",
+            "text": "${datos.texto}",
+            "fontSize": "${datos.tamano}",
+            "lineHeight": 1.3,
+            "color": "#ffffff",
+            "maxLines": 7
+          },
+          {
+            "type": "Text",
+            "text": "${datos.pie}",
+            "fontSize": "3vh",
+            "color": "#9a9a9a",
+            "maxLines": 1,
+            "paddingTop": "2vh"
+          }
+        ]
+      }
+    ]
+  }
+}

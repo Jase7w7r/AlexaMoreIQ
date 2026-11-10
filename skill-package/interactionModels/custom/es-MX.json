@@ -1,0 +1,128 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "mi asistente",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": ["ya", "eso es todo", "nada más", "gracias", "adiós", "hasta luego"] },
+        { "name": "AMAZON.HelpIntent", "samples": ["qué puedes hacer", "cómo funcionas", "cómo te uso"] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] },
+        {
+          "name": "NombreIntent",
+          "slots": [{ "name": "nombre", "type": "AMAZON.FirstName" }],
+          "samples": [
+            "me llamo {nombre}",
+            "soy {nombre}",
+            "mi nombre es {nombre}",
+            "llámame {nombre}",
+            "yo soy {nombre}"
+          ]
+        },
+        {
+          "name": "RecordarIntent",
+          "slots": [{ "name": "frase", "type": "FRASE" }],
+          "samples": [
+            "recuerda que {frase}",
+            "acuérdate de que {frase}",
+            "acuérdate que {frase}",
+            "anota que {frase}",
+            "apunta que {frase}",
+            "no olvides que {frase}",
+            "recuerda {frase}"
+          ]
+        },
+        {
+          "name": "QuienSoyIntent",
+          "samples": [
+            "quién soy",
+            "sabes quién soy",
+            "qué sabes de mí",
+            "qué recuerdas de mí",
+            "qué te he pedido recordar"
+          ]
+        },
+        {
+          "name": "OlvidarIntent",
+          "samples": [
+            "olvida lo que sabes de mí",
+            "borra mi memoria",
+            "olvida todo",
+            "borra lo que te pedí recordar",
+            "olvídame"
+          ]
+        },
+        {
+          "name": "PreguntaIntent",
+          "slots": [{ "name": "frase", "type": "FRASE" }],
+          "samples": [
+            "{frase}",
+            "pregunta {frase}",
+            "dime {frase}",
+            "busca {frase}",
+            "quiero saber {frase}",
+            "explícame {frase}",
+            "cuéntame {frase}",
+            "investiga {frase}",
+            "averigua {frase}",
+            "cuál es {frase}",
+            "qué es {frase}",
+            "quién es {frase}",
+            "cómo {frase}",
+            "cuánto {frase}",
+            "cuándo {frase}",
+            "dónde {frase}",
+            "por qué {frase}"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "FRASE",
+          "values": [
+            { "name": { "value": "cuánto está el dólar hoy" } },
+            { "name": { "value": "cómo quedó el partido del querétaro" } },
+            { "name": { "value": "quién escribió cien años de soledad" } },
+            { "name": { "value": "va a llover mañana" } },
+            { "name": { "value": "qué noticias hay hoy" } },
+            { "name": { "value": "cuánto es quince por doce" } },
+            { "name": { "value": "quién es el presidente de méxico" } },
+            { "name": { "value": "cuéntame un chiste" } },
+            { "name": { "value": "qué fue la revolución mexicana" } },
+            { "name": { "value": "cómo se hace un pastel de chocolate" } },
+            { "name": { "value": "a qué hora abre el banco" } },
+            { "name": { "value": "cuántas calorías tiene un plátano" } },
+            { "name": { "value": "qué significa la palabra efímero" } },
+            { "name": { "value": "cómo se dice gracias en japonés" } },
+            { "name": { "value": "qué película me recomiendas" } },
+            { "name": { "value": "cuánto mide la torre eiffel" } },
+            { "name": { "value": "qué puedo cocinar con pollo y arroz" } },
+            { "name": { "value": "cuándo es el próximo puente" } },
+            { "name": { "value": "qué pasó en las noticias de querétaro" } },
+            { "name": { "value": "cuál es la capital de australia" } },
+            { "name": { "value": "cómo quitar una mancha de vino" } },
+            { "name": { "value": "cuántos años tiene el papa" } },
+            { "name": { "value": "qué hora es en madrid" } },
+            { "name": { "value": "dame una idea para cenar" } },
+            { "name": { "value": "cómo funciona una vacuna" } },
+            { "name": { "value": "qué equipos juegan hoy" } },
+            { "name": { "value": "qué dentista queda cerca" } },
+            { "name": { "value": "cuánto cuesta un boleto a cancún" } },
+            { "name": { "value": "explícame la fotosíntesis" } },
+            { "name": { "value": "tengo que llevar paraguas" } },
+            { "name": { "value": "el martes tengo dentista a las cinco" } },
+            { "name": { "value": "me gusta el café sin azúcar" } },
+            { "name": { "value": "mi cumpleaños es el doce de marzo" } },
+            { "name": { "value": "la contraseña del wifi está en la cocina" } },
+            { "name": { "value": "hay que pagar la luz el viernes" } },
+            { "name": { "value": "qué opinas de la inteligencia artificial" } },
+            { "name": { "value": "resume la trama de don quijote" } },
+            { "name": { "value": "cómo se calcula el área de un círculo" } },
+            { "name": { "value": "dame tres datos curiosos de los pulpos" } },
+            { "name": { "value": "traduce buenos días al inglés" } }
+          ]
+        }
+      ]
+    }
+  }
+}
