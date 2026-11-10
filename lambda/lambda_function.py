@@ -367,17 +367,19 @@ def buscar_wikipedia(consulta: str, reloj: Reloj, n: int = 3) -> List[Dict[str, 
 def buscar(consulta: str, reloj: Reloj) -> str:
     """Brave si hay llave (lo mejor para noticias y precios); si no, DuckDuckGo; y si ese bloquea,
     Wikipedia en español. Devuelve «(sin resultados)» si nada responde."""
-    fuentes = []
-    if BRAVE_API_KEY:
-        fuentes.append(("Brave", buscar_brave))
-    if TAVILY_API_KEY:
-        fuentes.append(("Tavily", buscar_tavily))
-    if SERPER_API_KEY:
-        fuentes.append(("Serper", buscar_serper))
-    if GOOGLE_API_KEY and GOOGLE_CX:
-        fuentes.append(("Google", buscar_google))
-    fuentes.append(("DuckDuckGo", buscar_duckduckgo))
-    fuentes.append(("Wikipedia", buscar_wikipedia))
+    disponibles = {
+        "brave": ("Brave", buscar_brave, bool(BRAVE_API_KEY)),
+        "tavily": ("Tavily", buscar_tavily, bool(TAVILY_API_KEY)),
+        "serper": ("Serper", buscar_serper, bool(SERPER_API_KEY)),
+        "google": ("Google", buscar_google, bool(GOOGLE_API_KEY and GOOGLE_CX)),
+        "duckduckgo": ("DuckDuckGo", buscar_duckduckgo, True),
+        "wikipedia": ("Wikipedia", buscar_wikipedia, True),
+    }
+    # Orden de preferencia: la lista BUSCADORES de secretos.json si existe (por ejemplo
+    # ["google", "tavily"]); lo que no se nombre va después en el orden por omisión.
+    orden = [str(x).lower() for x in (SECRETOS.get("BUSCADORES") or [])]
+    orden += [x for x in ("brave", "tavily", "serper", "google", "duckduckgo", "wikipedia") if x not in orden]
+    fuentes = [(disponibles[x][0], disponibles[x][1]) for x in orden if x in disponibles and disponibles[x][2]]
     for nombre, fn in fuentes:
         try:
             resultados = fn(consulta, reloj)

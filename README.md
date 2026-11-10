@@ -52,7 +52,9 @@ precios y deportes salen bien.
 | Brave | plan gratuito | Pide método de pago | <https://api-dashboard.search.brave.com> |
 
 Las llaves van en `secretos.json`: `TAVILY_API_KEY`, `SERPER_API_KEY`, `GOOGLE_API_KEY` + `GOOGLE_CX`
-o `BRAVE_API_KEY`. Basta una.
+o `BRAVE_API_KEY`. Basta una. Con varias, el orden por omisión es Brave, Tavily, Serper, Google,
+DuckDuckGo, Wikipedia; se cambia con `"BUSCADORES": ["google", "tavily"]` (los que no se nombren
+van después). Solo se consulta el siguiente cuando el anterior falla o no devuelve nada.
 
 **Clima** sin llave: las preguntas de lluvia, temperatura o pronóstico van directo a
 **Open-Meteo**, para la ciudad que se mencione o la de `LUGAR`. La ciudad se ubica con Nominatim
@@ -199,8 +201,10 @@ Las advertencias `SyntaxWarning` vienen del SDK de Amazon con Python 3.12; en el
 
 ## Ajustes
 
-- **Nombre de invocación**: `invocationName` en `es-MX.json`. Dos palabras o más, minúsculas,
-  sin «Alexa» ni marcas.
+- **Nombre de invocación**: `invocationName` en `es-MX.json`, o directamente en la consola
+  (Build › Invocations). Dos palabras o más, minúsculas, sin «Alexa» ni marcas, y mejor palabras
+  reales del español: Alexa reconoce peor las inventadas o recortadas. `smapi.py modelo` respeta
+  el nombre que tenga la skill en Amazon; para imponer el del archivo, `INVOCACION=local`.
 - **Modelo**: `MODELO` y `MODELO_RESPALDO` al inicio de `lambda_function.py`. Debe ser rápido y
   aceptar `chat_template_kwargs.enable_thinking=false`; los que razonan antes de contestar
   (Nemotron 3 Ultra) se pasan de los 8 segundos y devuelven solo razonamiento.

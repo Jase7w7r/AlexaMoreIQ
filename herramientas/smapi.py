@@ -72,6 +72,16 @@ def alojada(skill_id):
 def modelo(skill_id, ruta_modelo):
     with open(ruta_modelo, "r", encoding="utf-8") as f:
         cuerpo = json.load(f)
+    # El nombre de invocación es decisión de quien usa la skill y se cambia en la consola; se
+    # respeta el que ya tenga, salvo que se pida lo contrario con INVOCACION=local.
+    if os.environ.get("INVOCACION") != "local":
+        r = requests.get(API + "/v1/skills/%s/stages/development/interactionModel/locales/es-MX" % skill_id, headers=CAB, timeout=60)
+        if r.status_code == 200:
+            remoto = r.json().get("interactionModel", {}).get("languageModel", {}).get("invocationName")
+            local = cuerpo["interactionModel"]["languageModel"]["invocationName"]
+            if remoto and remoto != local:
+                cuerpo["interactionModel"]["languageModel"]["invocationName"] = remoto
+                print("conservo el nombre de invocación de Amazon: «%s» (el local es «%s»)" % (remoto, local))
     codigo, cab, datos = llamar("PUT", "/v1/skills/%s/stages/development/interactionModel/locales/es-MX" % skill_id, cuerpo)
     print("modelo enviado:", codigo, datos or "")
     # Esperar a que compile
